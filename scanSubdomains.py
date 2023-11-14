@@ -94,7 +94,7 @@ def alphabetizeAndWriteAlive(webserverSubdomains):
             cleanedWebserverSubdomains.remove(subdomain)
 
     sortedwebserverSubdomains = open("sortedWebserverSubdomains.txt", "w")
-    for subdomain in sorted(webserverSubdomains):
+    for subdomain in sorted(cleanedWebserverSubdomains):
         sortedwebserverSubdomains.write(subdomain.strip() + '\n')
     sortedwebserverSubdomains.close()
 
