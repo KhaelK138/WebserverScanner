@@ -8,12 +8,14 @@ subfinderSubdomains = ""
 
 # Reduce subdomain list to single copies of all subdomains (so we don't ping subdomains twice)
 def reduceSubdomains(subdomainsToReduce):
+    # Use this if we have subfinder subdomains
     reducedSubdomains = set()
+    if haveSubfinder:
+        reducedSubdomains = addSubfinderDomains(reducedSubdomains)
 
-    # Fill subdomains.txt with subdomains to test for socket
     initialSubdomains = open(subdomainsToReduce, "r")
     for subdomain in initialSubdomains:
-        # extract subdomains from emails found
+        # Extract subdomains from emails found
         if '@' in subdomain:
             subdomain = subdomain.split('@')[1]
         reducedSubdomains.add(subdomain)
@@ -25,12 +27,7 @@ def reduceSubdomains(subdomainsToReduce):
     reducedSubdomainsFile.close()
     return reducedSubdomains
 
-def aliveSubdomains(reducedSubdomains):
-    # Use this if we have subfinder subdomains
-    fullSubdomainSet = reducedSubdomains
-    if haveSubfinder:
-        fullSubdomainSet = addSubfinderDomains(reducedSubdomains)
-    
+def aliveSubdomains(fullSubdomainSet):
     fullSubdomainSetLen = len(fullSubdomainSet)
     aliveSubdomains = set()
     i = 0
@@ -79,17 +76,23 @@ def webserverSubdomains(aliveSubdomains):
     print(f"100% Finished\n---\n")
     return webserverSubdomains
 
-def check_port(domain):
+def check_port(subdomain):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(5)
     try:
-        result1 = sock.connect_ex((domain, 80))
-        result2 = sock.connect_ex((domain, 443))
+        result1 = sock.connect_ex((subdomain, 80))
+        result2 = sock.connect_ex((subdomain, 443))
     except:
         return False
     return (result1 == 0 or result2 == 0)
 
 def alphabetizeAndWriteAlive(webserverSubdomains):
+    # Remove double instances of www
+    cleanedWebserverSubdomains = webserverSubdomains.copy()
+    for subdomain in webserverSubdomains:
+        if subdomain[0:4] == "www." and subdomain[4:] in webserverSubdomains:
+            cleanedWebserverSubdomains.remove(subdomain)
+
     sortedwebserverSubdomains = open("sortedWebserverSubdomains.txt", "w")
     for subdomain in sorted(webserverSubdomains):
         sortedwebserverSubdomains.write(subdomain.strip() + '\n')
@@ -109,19 +112,19 @@ if __name__ == "__main__":
         subfinderSubdomains = str(sys.argv[2])
         haveSubfinder = True
     else:
-        print(print("If you have a list of subfinder subdomains, provide the name of the file as your second argument\n"))
+        print("If you have a list of subfinder subdomains, provide the name of the file as your second argument\n")
 
     # Reduce the subdomains to a set of unique subdomains
     reducedSubdomains = reduceSubdomains(subdomainsToReduce)
 
-    # Find the alive subdomains
-    aliveSubdomains = aliveSubdomains(reducedSubdomains)
+    # Ping subdomains - not necessary, as subdomains with webservers don't have to respond to pings
+    # aliveSubdomains = aliveSubdomains(reducedSubdomains)
 
     # Check which alive subdomains host a webserver
-    webserverSubdomains = webserverSubdomains(aliveSubdomains)
+    webserverSubdomains = webserverSubdomains(reducedSubdomains)
 
     # Organize webserverSubdomains alphabetically
     alphabetizeAndWriteAlive(webserverSubdomains)
 
-    print("Alive subdomains now in sortedWebserverSubdomains.txt\n")
+    print("Alive webservers now in sortedWebserverSubdomains.txt\n")
     
