@@ -2,30 +2,42 @@ import platform    # For getting the operating system name
 import subprocess  # For executing a shell command
 import socket      # For socketing to 80 and 443
 import sys         # For reading arguments
+import concurrent.futures # For multithreading
 
 haveSubfinder = False
 subfinderSubdomains = ""
+subdirectoryDict = {}
 
 # Reduce subdomain list to single copies of all subdomains (so we don't ping subdomains twice)
 def reduceSubdomains(subdomainsToReduce):
     # Use this if we have subfinder subdomains
     reducedSubdomains = set()
     if haveSubfinder:
-        reducedSubdomains = addSubfinderDomains(reducedSubdomains)
+        addSubfinderDomains(reducedSubdomains)
 
     initialSubdomains = open(subdomainsToReduce, "r")
     for subdomain in initialSubdomains:
         # Extract subdomains from emails found
         if '@' in subdomain:
             subdomain = subdomain.split('@')[1]
-        reducedSubdomains.add(subdomain)
     initialSubdomains.close()
 
     reducedSubdomainsFile = open("reducedSubdomains.txt", "w")
     for subdomain in reducedSubdomains:
-            reducedSubdomainsFile.write(subdomain)
+            reducedSubdomainsFile.write(subdomain.strip() + '\n')
     reducedSubdomainsFile.close()
     return reducedSubdomains
+
+def addSubfinderDomains(reducedSubdomains):
+    subfinderSubdomainsFile = open(subfinderSubdomains, "r")
+    for subfinderSubdomain in subfinderSubdomainsFile:
+        if '/' in subfinderSubdomain:
+            split = subfinderSubdomain.split('/')
+            subdirectoryDict.update({split[0]:"/" + "/".join(split[1:]).strip()})
+            subfinderSubdomain = split[0]
+        reducedSubdomains.add(subfinderSubdomain.strip())
+    if "" in reducedSubdomains:
+        reducedSubdomains.remove("")
 
 def aliveSubdomains(fullSubdomainSet):
     fullSubdomainSetLen = len(fullSubdomainSet)
@@ -33,7 +45,6 @@ def aliveSubdomains(fullSubdomainSet):
     i = 0
     print("Beginning Ping Scan\n---")
     for subdomain in fullSubdomainSet:
-        # print(subdomain)
         
         fivePercent = fullSubdomainSetLen // 20
         if fivePercent > 0 and i % fivePercent == 0:
@@ -45,13 +56,6 @@ def aliveSubdomains(fullSubdomainSet):
     print(f"100% Finished\n---\n")
     return aliveSubdomains
 
-def addSubfinderDomains(reducedSubdomains):
-    fullSubdomainSet = reducedSubdomains
-    subfinderSubdomainsFile = open(subfinderSubdomains, "r")
-    for subfinderDomain in subfinderSubdomainsFile:
-        fullSubdomainSet.add(subfinderDomain)
-    return fullSubdomainSet
-
 def ping(host):
     param = '-n' if platform.system().lower()=='windows' else '-c'
     command = ['ping', param, '1', '-w', '300', host]
@@ -62,17 +66,20 @@ def webserverSubdomains(aliveSubdomains):
     aliveSubdomainSetLen = len(aliveSubdomains)
     i = 0
     print("Beginning Webserver Scan\n---")
-    
-    for subdomain in aliveSubdomains:
-        # print(subdomain)
-        
-        fivePercent = aliveSubdomainSetLen // 20
-        if fivePercent > 0 and i % fivePercent == 0:
-            percentage = int(i * 100.0 / aliveSubdomainSetLen)
-            print(f"{percentage}% Finished")
+    def check_web_server(subdomain):
+        nonlocal i
         if check_port(subdomain.strip()):
             webserverSubdomains.add(subdomain)
         i += 1
+        five_percent = aliveSubdomainSetLen // 20
+        if five_percent > 0 and i % five_percent == 0:
+            percentage = int(i * 100.0 / aliveSubdomainSetLen)
+            print(f"{percentage}% Finished")
+
+    max_workers = 20
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(check_web_server, aliveSubdomains)
+
     print(f"100% Finished\n---\n")
     return webserverSubdomains
 
@@ -95,20 +102,23 @@ def alphabetizeAndWriteAlive(webserverSubdomains):
 
     sortedwebserverSubdomains = open("sortedWebserverSubdomains.txt", "w")
     for subdomain in sorted(cleanedWebserverSubdomains):
-        sortedwebserverSubdomains.write(subdomain.strip() + '\n')
+        if subdomain in subdirectoryDict.keys():
+            sortedwebserverSubdomains.write(subdomain.strip() + subdirectoryDict.get(subdomain) + '\n')
+        else:
+            sortedwebserverSubdomains.write(subdomain.strip() + '\n')
     sortedwebserverSubdomains.close()
 
-if __name__ == "__main__":  
-    print()
+if __name__ == "__main__": 
     
     # Use first argument as entire subdomain list
-    if sys.argv[1]:
+    if len(sys.argv) > 1:
         subdomainsToReduce = str(sys.argv[1])
     else: 
         print("Please provide a list of domains to reduce as your first argument\n")
+        exit(1)
     
     # Use second argument as subfinder subdomains
-    if sys.argv[2]:
+    if len(sys.argv) > 2:
         subfinderSubdomains = str(sys.argv[2])
         haveSubfinder = True
     else:
